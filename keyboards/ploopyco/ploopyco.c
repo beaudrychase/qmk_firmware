@@ -34,7 +34,6 @@
 #ifndef PLOOPY_SCROLL_BUTTON_DEBOUNCE
 #    define PLOOPY_SCROLL_BUTTON_DEBOUNCE 100
 #endif
-
 #ifndef PLOOPY_DPI_OPTIONS
 #    define PLOOPY_DPI_OPTIONS \
         { 600, 900, 1200, 1600, 2400 }
@@ -65,8 +64,10 @@ uint16_t          dpi_array[] = PLOOPY_DPI_OPTIONS;
 // Trackball State
 bool  is_scroll_clicked    = false;
 bool  is_drag_scroll       = false;
-int8_t scroll_remainder_h = 0;
-int8_t scroll_remainder_v = 0;
+int16_t scroll_divisor_h = PLOOPY_DRAGSCROLL_DIVISOR_H;
+int16_t scroll_divisor_v = PLOOPY_DRAGSCROLL_DIVISOR_V;
+int16_t scroll_remainder_h = 0;
+int16_t scroll_remainder_v = 0;
 
 #ifdef ENCODER_ENABLE
 uint16_t lastScroll        = 0; // Previous confirmed wheel event
@@ -130,15 +131,15 @@ void encoder_driver_task(void) {
 report_mouse_t pointing_device_task_kb(report_mouse_t mouse_report) {
     if (is_drag_scroll) {
         // Assign integer parts of accumulated scroll values with remainders to the mouse report
-        mouse_report.h = (mouse_report.x + scroll_remainder_h) / PLOOPY_DRAGSCROLL_DIVISOR_H;
+        mouse_report.h = (mouse_report.x + scroll_remainder_h) / scroll_divisor_h;
 
-        mouse_report.v = (mouse_report.y + scroll_remainder_v)  / PLOOPY_DRAGSCROLL_DIVISOR_V;
+        mouse_report.v = (mouse_report.y + scroll_remainder_v)  / scroll_divisor_v;
 #ifdef PLOOPY_DRAGSCROLL_INVERT_V
         mouse_report.v *= -1;
 #endif
         // Update accumulated scroll values to the remainders of mouse report
-        scroll_remainder_h = (mouse_report.x + scroll_remainder_h) % PLOOPY_DRAGSCROLL_DIVISOR_H;
-        scroll_remainder_v = (mouse_report.y + scroll_remainder_v) % PLOOPY_DRAGSCROLL_DIVISOR_V;
+        scroll_remainder_h = (mouse_report.x + scroll_remainder_h) % scroll_divisor_h;
+        scroll_remainder_v = (mouse_report.y + scroll_remainder_v) % scroll_divisor_v;
 
         // Clear the X and Y values of the mouse report
         mouse_report.x = 0;
@@ -149,6 +150,11 @@ report_mouse_t pointing_device_task_kb(report_mouse_t mouse_report) {
     }
 
     return pointing_device_task_user(mouse_report);
+}
+
+void update_dpi_scaled_drag_scroll_divisors(void) {
+    scroll_divisor_h = (PLOOPY_DRAGSCROLL_DIVISOR_H * dpi_array[keyboard_config.dpi_config]) / dpi_array[PLOOPY_DPI_DEFAULT];
+    scroll_divisor_v = (PLOOPY_DRAGSCROLL_DIVISOR_V * dpi_array[keyboard_config.dpi_config]) / dpi_array[PLOOPY_DPI_DEFAULT];
 }
 
 bool process_record_kb(uint16_t keycode, keyrecord_t* record) {
@@ -172,6 +178,9 @@ bool process_record_kb(uint16_t keycode, keyrecord_t* record) {
         keyboard_config.dpi_config = (keyboard_config.dpi_config + 1) % DPI_OPTION_SIZE;
         eeconfig_update_kb(keyboard_config.raw);
         pointing_device_set_cpi(dpi_array[keyboard_config.dpi_config]);
+#ifdef PLOOPY_SCALE_DRAGSCROLL_DIVISORS
+        update_dpi_scaled_drag_scroll_divisors();
+#endif
     }
 
     if (keycode == MOMENTARY_DRAG_SCROLL) {
@@ -219,6 +228,9 @@ void pointing_device_init_kb(void) {
         eeconfig_init_kb();
     }
     pointing_device_set_cpi(dpi_array[keyboard_config.dpi_config]);
+#ifdef PLOOPY_SCALE_DRAGSCROLL_DIVISORS
+    update_dpi_scaled_drag_scroll_divisors();
+#endif
 }
 
 void eeconfig_init_kb(void) {
